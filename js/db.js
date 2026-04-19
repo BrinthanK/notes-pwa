@@ -1,27 +1,12 @@
-import { encryptData, decryptData, encryptBytes, decryptBytes } from "./crypto.js";
 import { normalizeNoteShape } from "./model.js";
 
-const DB_NAME = "notes-db";
-const DB_VERSION = 3;
+const DB_NAME = "notes-pwa-store";
+const DB_VERSION = 1;
 
-const META = "meta";
-const ENTRIES = "entries";
+const NOTES = "notes";
 const BLOBS = "blobs";
-const LEGACY = "notes";
 
 let dbPromise = null;
-
-function ensureV3Stores(db) {
-  if (!db.objectStoreNames.contains(META)) {
-    db.createObjectStore(META, { keyPath: "id" });
-  }
-  if (!db.objectStoreNames.contains(ENTRIES)) {
-    db.createObjectStore(ENTRIES, { keyPath: "id" });
-  }
-  if (!db.objectStoreNames.contains(BLOBS)) {
-    db.createObjectStore(BLOBS, { keyPath: "id" });
-  }
-}
 
 function openDatabase() {
   return new Promise((resolve, reject) => {
@@ -31,29 +16,11 @@ function openDatabase() {
 
     req.onupgradeneeded = (event) => {
       const db = event.target.result;
-      const tx = event.target.transaction;
-
-      if (event.oldVersion < 3) {
-        if (db.objectStoreNames.contains(LEGACY)) {
-          const getAllReq = tx.objectStore(LEGACY).getAll();
-          getAllReq.onerror = () => {
-            throw getAllReq.error;
-          };
-          getAllReq.onsuccess = () => {
-            const legacyRows = getAllReq.result || [];
-            db.deleteObjectStore(LEGACY);
-            ensureV3Stores(db);
-            if (legacyRows.length > 0) {
-              const metaStore = tx.objectStore(META);
-              metaStore.put({
-                id: "legacyPending",
-                json: JSON.stringify(legacyRows),
-              });
-            }
-          };
-        } else {
-          ensureV3Stores(db);
-        }
+      if (!db.objectStoreNames.contains(NOTES)) {
+        db.createObjectStore(NOTES, { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains(BLOBS)) {
+        db.createObjectStore(BLOBS, { keyPath: "id" });
       }
     };
 
@@ -68,100 +35,24 @@ export function initDB() {
   return dbPromise;
 }
 
-export async function getMeta(id) {
-  const db = await initDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(META, "readonly");
-    const store = tx.objectStore(META);
-    const r = store.get(id);
-    r.onerror = () => reject(r.error);
-    r.onsuccess = () => resolve(r.result || null);
-  });
-}
-
-export async function putMeta(record) {
-  const db = await initDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(META, "readwrite");
-    const store = tx.objectStore(META);
-    const r = store.put(record);
-    r.onerror = () => reject(r.error);
-    tx.oncomplete = () => resolve(record);
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-export async function deleteMeta(id) {
-  const db = await initDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(META, "readwrite");
-    const store = tx.objectStore(META);
-    const r = store.delete(id);
-    r.onerror = () => reject(r.error);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-export async function hasSalt() {
-  const row = await getMeta("salt");
-  return !!(row && row.salt);
-}
-
-export async function getSalt() {
-  const row = await getMeta("salt");
-  if (!row || !row.salt) {
-    return null;
-  }
-  return row.salt;
-}
-
-export async function setSalt(saltBuffer) {
-  const saltCopy = new Uint8Array(saltBuffer);
-  await putMeta({ id: "salt", salt: saltCopy });
-}
-
-export async function setLegacyPending(jsonString) {
-  if (jsonString === null || jsonString === undefined) {
-    await deleteMeta("legacyPending");
-    return;
-  }
-  await putMeta({ id: "legacyPending", json: jsonString });
-}
-
-async function encryptNoteRecord(key, normalizedNote) {
-  const packed = await encryptData(key, normalizedNote);
-  return {
-    id: normalizedNote.id,
-    iv: packed.iv,
-    ciphertext: packed.ciphertext,
-  };
-}
-
-async function decryptNoteRecord(key, row) {
-  const plain = await decryptData(key, row.iv, row.ciphertext);
-  return normalizeNoteShape(plain);
-}
-
-export async function saveNote(key, note) {
+export async function saveNote(note) {
   const normalized = normalizeNoteShape(note);
   const db = await initDB();
-  const row = await encryptNoteRecord(key, normalized);
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(ENTRIES, "readwrite");
-    const store = tx.objectStore(ENTRIES);
-    const r = store.put(row);
+    const tx = db.transaction(NOTES, "readwrite");
+    const store = tx.objectStore(NOTES);
+    const r = store.put(normalized);
     r.onerror = () => reject(r.error);
     tx.oncomplete = () => resolve(normalized);
     tx.onerror = () => reject(tx.error);
   });
 }
 
-export async function getNote(key, id) {
+export async function getNote(id) {
   const db = await initDB();
   const row = await new Promise((resolve, reject) => {
-    const tx = db.transaction(ENTRIES, "readonly");
-    const store = tx.objectStore(ENTRIES);
+    const tx = db.transaction(NOTES, "readonly");
+    const store = tx.objectStore(NOTES);
     const r = store.get(id);
     r.onerror = () => reject(r.error);
     r.onsuccess = () => resolve(r.result || null);
@@ -169,37 +60,33 @@ export async function getNote(key, id) {
   if (!row) {
     return null;
   }
-  return decryptNoteRecord(key, row);
+  return normalizeNoteShape(row);
 }
 
-export async function getAllNotes(key) {
+export async function getAllNotes() {
   const db = await initDB();
   const rows = await new Promise((resolve, reject) => {
-    const tx = db.transaction(ENTRIES, "readonly");
-    const store = tx.objectStore(ENTRIES);
+    const tx = db.transaction(NOTES, "readonly");
+    const store = tx.objectStore(NOTES);
     const r = store.getAll();
     r.onerror = () => reject(r.error);
     r.onsuccess = () => resolve(r.result || []);
   });
-  const notes = [];
-  for (const row of rows) {
-    const note = await decryptNoteRecord(key, row);
-    notes.push(note);
-  }
+  const notes = rows.map((row) => normalizeNoteShape(row));
   notes.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   return notes;
 }
 
-export async function deleteNote(key, id) {
-  const existing = await getNote(key, id);
+export async function deleteNote(id) {
+  const existing = await getNote(id);
   if (!existing) {
     return;
   }
   const blobIds = collectBlobIds(existing);
   const db = await initDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction([ENTRIES, BLOBS], "readwrite");
-    const entryStore = tx.objectStore(ENTRIES);
+    const tx = db.transaction([NOTES, BLOBS], "readwrite");
+    const entryStore = tx.objectStore(NOTES);
     entryStore.delete(id);
     const blobStore = tx.objectStore(BLOBS);
     blobIds.forEach((bid) => blobStore.delete(bid));
@@ -223,19 +110,13 @@ function collectBlobIds(note) {
   return ids;
 }
 
-export async function saveEncryptedBlob(key, blob) {
-  const buf = await blob.arrayBuffer();
-  const packed = await encryptBytes(key, buf);
+export async function saveBlob(blob) {
   const blobId = crypto.randomUUID();
   const db = await initDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(BLOBS, "readwrite");
     const store = tx.objectStore(BLOBS);
-    const record = {
-      id: blobId,
-      iv: packed.iv,
-      ciphertext: packed.ciphertext,
-    };
+    const record = { id: blobId, blob };
     const r = store.put(record);
     r.onerror = () => reject(r.error);
     tx.oncomplete = () => resolve(blobId);
@@ -243,7 +124,7 @@ export async function saveEncryptedBlob(key, blob) {
   });
 }
 
-export async function getEncryptedBlob(key, id) {
+export async function getBlob(id) {
   const db = await initDB();
   const row = await new Promise((resolve, reject) => {
     const tx = db.transaction(BLOBS, "readonly");
@@ -255,11 +136,10 @@ export async function getEncryptedBlob(key, id) {
   if (!row) {
     return null;
   }
-  const plain = await decryptBytes(key, row.iv, row.ciphertext);
-  return new Blob([plain]);
+  return row.blob;
 }
 
-export async function deleteEncryptedBlob(id) {
+export async function deleteBlob(id) {
   const db = await initDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(BLOBS, "readwrite");
@@ -269,26 +149,4 @@ export async function deleteEncryptedBlob(id) {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
-}
-
-export async function writeVaultVerifier(key) {
-  const packed = await encryptData(key, { kind: "vault-verifier", v: 1 });
-  await putMeta({
-    id: "vaultVerifier",
-    iv: packed.iv,
-    ciphertext: packed.ciphertext,
-  });
-}
-
-export async function verifyVaultKey(key) {
-  const row = await getMeta("vaultVerifier");
-  if (!row || !row.iv || !row.ciphertext) {
-    return true;
-  }
-  try {
-    await decryptData(key, row.iv, row.ciphertext);
-    return true;
-  } catch {
-    return false;
-  }
 }

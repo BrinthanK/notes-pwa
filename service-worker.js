@@ -1,4 +1,4 @@
-const CACHE_NAME = "notes-v3";
+const CACHE_NAME = "notes-v4";
 
 const BASE_PATH = self.location.pathname.replace(/service-worker\.js$/, "");
 
@@ -17,10 +17,7 @@ const PRECACHE_URLS = [
   asset("js/db.js"),
   asset("js/ui.js"),
   asset("js/utils.js"),
-  asset("js/crypto.js"),
-  asset("js/session.js"),
   asset("js/model.js"),
-  asset("js/migrate.js"),
   asset("js/editors.js"),
   asset("assets/icons/icon-192.png"),
   asset("assets/icons/icon-512.png"),

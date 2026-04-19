@@ -51,7 +51,7 @@ Open `http://127.0.0.1:8080/` (root). To approximate GitHub Pages under a subpat
 | **Persistence** | Create or edit a note, reload | Data still there |
 | **Install** | Add to Home Screen, launch from icon | Opens in standalone display (minimal browser UI) |
 
-Also verify in DevTools → Application: **IndexedDB** (`notes-db`), **Service Workers** (active), **Manifest** (no errors).
+Also verify in DevTools → Application: **IndexedDB** (`notes-pwa-store`), **Service Workers** (active), **Manifest** (no errors). Data is stored **in plain form** on the device (no app password or encryption).
 
 ## Phase 2 ideas
 

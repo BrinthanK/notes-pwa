@@ -15,32 +15,6 @@ function formatTime(ts) {
   }
 }
 
-export function createAuthUi(els) {
-  const { screen, setup, unlock, err, pass, pass2, setupBtn, unlockBtn, saltExists } = els;
-
-  function setError(msg) {
-    err.textContent = msg || "";
-  }
-
-  function show() {
-    screen.hidden = false;
-    if (saltExists) {
-      setup.hidden = true;
-      unlock.hidden = false;
-    } else {
-      setup.hidden = false;
-      unlock.hidden = true;
-    }
-  }
-
-  function hide() {
-    screen.hidden = true;
-    setError("");
-  }
-
-  return { show, hide, setError };
-}
-
 export function createAppUi(els) {
   const {
     noteList,
@@ -231,7 +205,9 @@ export function createAppUi(els) {
   });
 
   btnDelete.addEventListener("click", () => app.onDeleteNote());
-  btnLock.addEventListener("click", () => app.onLock());
+  if (btnLock) {
+    btnLock.addEventListener("click", () => app.onLock());
+  }
 
   return {
     sync,
