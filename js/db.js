@@ -117,7 +117,8 @@ export async function getSalt() {
 }
 
 export async function setSalt(saltBuffer) {
-  await putMeta({ id: "salt", salt: saltBuffer });
+  const saltCopy = new Uint8Array(saltBuffer);
+  await putMeta({ id: "salt", salt: saltCopy });
 }
 
 export async function setLegacyPending(jsonString) {

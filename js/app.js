@@ -79,6 +79,30 @@ function mergePayload(current, partial, titleText) {
   });
 }
 
+function webCryptoReady() {
+  return Boolean(globalThis.crypto && globalThis.crypto.subtle);
+}
+
+function describeSetupError(err) {
+  if (!webCryptoReady()) {
+    return "Cryptography is not available (use HTTPS in a normal browser tab).";
+  }
+  if (!err) {
+    return "Could not create vault.";
+  }
+  const name = err.name;
+  if (name === "QuotaExceededError") {
+    return "Storage is full. Free space or allow site data for this origin.";
+  }
+  if (name === "InvalidStateError" || name === "TransactionInactiveError") {
+    return "Database upgrade failed. Try clearing site data for this app and reload.";
+  }
+  if (name === "DataError" || name === "OperationError") {
+    return "Could not derive the encryption key. Try a different password length or device.";
+  }
+  return "Could not create vault.";
+}
+
 async function bootstrap() {
   await initDB();
   const salted = await hasSalt();
@@ -147,6 +171,12 @@ async function bootstrap() {
 
   document.getElementById("setup-btn").addEventListener("click", async () => {
     auth.setError("");
+    if (!webCryptoReady()) {
+      auth.setError(
+        "Cryptography is not available (use HTTPS in a normal browser tab)."
+      );
+      return;
+    }
     const p = document.getElementById("setup-pass").value;
     const p2 = document.getElementById("setup-pass2").value;
     if (!p || p.length < 8) {
@@ -159,16 +189,16 @@ async function bootstrap() {
     }
     try {
       const salt = crypto.getRandomValues(new Uint8Array(16));
-      await setSalt(salt);
       const key = await deriveKey(p, salt);
+      await setSalt(new Uint8Array(salt));
       await writeVaultVerifier(key);
       document.getElementById("setup-pass").value = "";
       document.getElementById("setup-pass2").value = "";
       auth.hide();
       await startVault(key);
     } catch (e) {
-      auth.setError("Could not create vault.");
       console.error(e);
+      auth.setError(describeSetupError(e));
     }
   });
 

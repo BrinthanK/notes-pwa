@@ -1,4 +1,4 @@
-const CACHE_NAME = "notes-v2";
+const CACHE_NAME = "notes-v3";
 
 const BASE_PATH = self.location.pathname.replace(/service-worker\.js$/, "");
 

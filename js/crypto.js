@@ -1,4 +1,10 @@
 export async function deriveKey(password, salt) {
+  let saltBytes;
+  if (salt instanceof ArrayBuffer) {
+    saltBytes = new Uint8Array(salt);
+  } else {
+    saltBytes = new Uint8Array(salt.buffer, salt.byteOffset, salt.byteLength);
+  }
   const enc = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
@@ -10,7 +16,7 @@ export async function deriveKey(password, salt) {
   return crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
-      salt,
+      salt: saltBytes,
       iterations: 100000,
       hash: "SHA-256",
     },
